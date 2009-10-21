@@ -1,0 +1,11 @@
+This program was written as an alternative to the spreadsheet my fiance was working on because:
+
+1. I dislike spreadsheets (they hide formulas and show data, i prefer code, which shows formulas and hides data).
+2. I wanted to follow through with the same calculation processes
+3. We realized we just don't fully understand what it takes to own a home.
+
+I am making this available in the hopes that some people i will know might help make it more accurate, and maybe someone else will find it useful.
+
+There are alot of mortgage type calculators out there in javascript and everything else, but I like python, and I am trying to make this one focus on how much it costs, to make sure I can afford the payments even with changing job situations.
+
+-Nikolaj Baer
