@@ -131,6 +131,7 @@ def build_optparser():
     parser.add_option("--inflation-rate",dest="inflation_rate",help="Rate of inflation as it effects utilities and insurance",default="%0.2f"%USA_INFLATION_RATE)
     parser.add_option("--salary-growth",dest="salary_growth",help="Rate of salary growth in percent",default="3")
     parser.add_option("--medical-insurance",dest="med_insurance",help="monthly cost of medical insurance",default="150")
+    parser.add_option("--savings-rate",dest="save_rate",help="Percent of yearly income that is saved for retirement/rainy day",default="15")
 
     return parser
 
@@ -160,22 +161,28 @@ def do_the_math(value,income,options):
     monthly_other_costs=[]
     monthly_house_costs=[]
     monthly_leftover=[]
+    monthly_savings=[]
     stated_income=[]
     income_over_time=income
     medical=float(options.med_insurance)*12
     growing_costs=float(options.utilities)*12+float(options.insurance)
     home_value=value
+    # TODO: convert to monthly percentage applications
+    # TODO: add rental comparison
+    # TODO: add for differing income levels
     for y in range(years):
         # figure out yearly takehome
         writeoff=sum(interest_paid[y*12:(y+1)*12])
         agi=income_over_time-writeoff
         income_tax=get_tax(agi,int(options.filing_status))
-        takehome=income_over_time-income_tax-medical
         costs=growing_costs + get_percent(options.repair,home_value) + get_percent(options.prop_taxes,home_value)
+        savings=get_percent(options.save_rate,income_over_time)
+        takehome=income_over_time-income_tax-medical-savings
         # Expand to monthly rates.. this is convoluted
         stated_income +=[income_over_time/12.0]*12
         interest_writeoff+=[writeoff/12.0]*12
         monthly_takehome += [takehome/12.0]*12
+        monthly_savings += [savings/12.0]*12
         monthly_other_costs += [(costs/12)]*12
         monthly_house_costs += [(costs+mp*12)/12]*12
         monthly_leftover += [(takehome-costs-mp*12)/12]*12
@@ -187,6 +194,7 @@ def do_the_math(value,income,options):
         home_value = apply_percent(options.home_growth,home_value)
 
     data["monthly takehome"]=monthly_takehome
+    data["monthly savings"]=monthly_savings
     data["monthly other costs"]=monthly_other_costs
     data["monthly house costs"]=monthly_house_costs
     data["monthly leftover"]=monthly_leftover
