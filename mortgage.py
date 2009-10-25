@@ -56,8 +56,8 @@ CA_TAX_TABLE=(
         (2339.99,9.30,64050.00,1000000000.00), ),
 )
 
-FICA_RATE="7.65"
-FICA_MAX="6621.60"
+FICA_RATE=7.65
+FICA_MAX=6621.60
 
 # average yearly inflation from BLS in USA from 1998-2009
 USA_INFLATION_RATES=[3.85,2.85,3.24,3.39,2.68,2.27,1.59,2.83,3.38,2.19,1.55]
@@ -102,8 +102,10 @@ def get_tax(i,fs):
          if r[2]<=i and r[3] >= i:
             tr+=r[1]
             extra+=r[0]
-    print "got tax rate of ",tr,"% plus extra ",extra
-    return ((tr/100.0)*i) + extra
+    fica_tax=FICA_RATE*i 
+    if fica_tax > FICA_MAX: fica_tax=FICA_MAX
+    print "for $",i," got tax rate of ",tr,"% plus extra ",extra," and fica of ",fica_tax
+    return ((tr/100.0)*i) + extra + fica_tax
     
 def calculate_tax_savings(agi,writeoffs,filing_status):
     taxes=get_tax(agi,filing_status)
@@ -125,7 +127,7 @@ def build_optparser():
     parser.add_option("--insurance",dest="insurance",help="Annual cost of homeowners insurance in dollars",default="2000")
     parser.add_option("-u","--utilites",dest="utilities",help="Monthly average cost of utilities",default="150")
     parser.add_option("--filing-status",dest="filing_status",help="Tax filing status. 1=single, 2=joint,3=separate,4=head of household.",default="2")
-    parser.add_option("--equity-growth",dest="equity_growth",help="Annual percentage increase in value of house",default="1")
+    parser.add_option("--home-growth",dest="home_growth",help="Annual percentage increase in value of house",default="1")
     parser.add_option("--inflation-rate",dest="inflation_rate",help="Rate of inflation as it effects utilities and insurance",default="%0.2f"%USA_INFLATION_RATE)
     parser.add_option("--salary-growth",dest="salary_growth",help="Rate of salary growth in percent",default="3")
     parser.add_option("--medical-insurance",dest="med_insurance",help="monthly cost of medical insurance",default="150")
@@ -140,47 +142,58 @@ def do_the_math(value,income,options):
     data={}
     # Here I calculate the equity growth over time, as well as the monthly payment
     balances,interest_paid,equity_earned,mp=generate_pay_schedule(principal,rate,years)
+    # Stash some total costs
+    vals["total cost"]=mp*years*12
+    vals["total interest paid"]=(mp*years*12)-principal
     # store these lists of numbers so i can graph stuff
     data["balances"]=balances
     data["interest paid"]=interest_paid
     data["equity earned"]=equity_earned
     data["monthly payment"]=[mp]*int(years)*12
 
+    apply_percent=lambda p,v: (1.0+float(p)/100.0)*v
+    get_percent=lambda p,v: (float(p)/100.0)*v
+
+    # assess costs and income on a yearly basis
     interest_writeoff=[]
-    monthly_income=[]
+    monthly_takehome=[]
+    monthly_other_costs=[]
+    monthly_house_costs=[]
+    monthly_leftover=[]
     stated_income=[]
     income_over_time=income
+    medical=float(options.med_insurance)*12
+    growing_costs=float(options.utilities)*12+float(options.insurance)
+    home_value=value
     for y in range(years):
-        income_over_time*=1.0+(float(options.salary_growth)/100.0)
+        # figure out yearly takehome
         writeoff=sum(interest_paid[y*12:(y+1)*12])
         agi=income_over_time-writeoff
         income_tax=get_tax(agi,int(options.filing_status))
-        monthly_income += [(income_over_time-income_tax)/12.0]*12
+        takehome=income_over_time-income_tax-medical
+        costs=growing_costs + get_percent(options.repair,home_value) + get_percent(options.prop_taxes,home_value)
+        # Expand to monthly rates.. this is convoluted
         stated_income +=[income_over_time/12.0]*12
-        interest_writeoff=[writeoff/12.0]*12
+        interest_writeoff+=[writeoff/12.0]*12
+        monthly_takehome += [takehome/12.0]*12
+        monthly_other_costs += [(costs/12)]*12
+        monthly_house_costs += [(costs+mp*12)/12]*12
+        monthly_leftover += [(takehome-costs-mp*12)/12]*12
 
-    data["monthly_income"]=monthly_income
-    data["interest_writeoff"]=interest_writeoff
+        # apply inflation for next year
+        income_over_time=apply_percent(options.salary_growth,income_over_time)
+        medical=apply_percent(options.inflation_rate,medical)
+        growing_costs=apply_percent(options.inflation_rate,growing_costs)
+        home_value = apply_percent(options.home_growth,home_value)
+
+    data["monthly takehome"]=monthly_takehome
+    data["monthly other costs"]=monthly_other_costs
+    data["monthly house costs"]=monthly_house_costs
+    data["monthly leftover"]=monthly_leftover
+    data["interest writeoff"]=interest_writeoff
     data["stated income"]=stated_income
     vals["monthly payment"]=mp
 
-    # Then monthly costs
-    vals["total cost"]=mp*years*12
-    vals["total interest"]=(mp*years*12)-principal
-    mc=calculate_monthly_cost(  value,
-                                mp,
-                                float(options.prop_taxes),
-                                float(options.repair),
-                                float(options.insurance),
-                                float(options.utilities) )
-
-    vals["monthly costs"]=mc
-
-    # Figure out extra income from writeoffs
-    vals["extra monthly income"]=calculate_tax_savings(income,vals["total interest"]/years,int(options.filing_status))
-
-    vals["monthly costs with new income"]=mc-vals["extra monthly income"] 
-    # return the values we calculated
     return vals,data
 
 if __name__=="__main__":
