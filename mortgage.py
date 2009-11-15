@@ -132,6 +132,9 @@ def build_optparser():
     parser.add_option("--salary-growth",dest="salary_growth",help="Rate of salary growth in percent",default="3")
     parser.add_option("--medical-insurance",dest="med_insurance",help="monthly cost of medical insurance",default="150")
     parser.add_option("--savings-rate",dest="save_rate",help="Percent of yearly income that is saved for retirement/rainy day",default="15")
+    parser.add_option("--closing-costs",dest="closingcosts",help="Closing costs as percent of home value",default="3")
+    parser.add_option("--home-owners",dest="hoa",help="Home Owners Assoc yearly fee (grows with inflation)",default="0")
+
 
     return parser
 
@@ -146,6 +149,7 @@ def do_the_math(value,income,options):
     # Stash some total costs
     vals["total cost"]=mp*years*12
     vals["total interest paid"]=(mp*years*12)-principal
+    vals["closing costs"]=float(options.closingcosts)/100.0*value
     # store these lists of numbers so i can graph stuff
     data["balances"]=balances
     data["interest paid"]=interest_paid
@@ -162,10 +166,11 @@ def do_the_math(value,income,options):
     monthly_house_costs=[]
     monthly_leftover=[]
     monthly_savings=[]
+    monthly_income_taxes=[]
     stated_income=[]
     income_over_time=income
     medical=float(options.med_insurance)*12
-    growing_costs=float(options.utilities)*12+float(options.insurance)
+    growing_costs=float(options.utilities)*12+float(options.insurance)+float(options.hoa)
     home_value=value
     # TODO: convert to monthly percentage applications
     # TODO: add rental comparison
@@ -173,6 +178,8 @@ def do_the_math(value,income,options):
     for y in range(years):
         # figure out yearly takehome
         writeoff=sum(interest_paid[y*12:(y+1)*12])
+        if y==0:
+            writeoff+=vals["closing costs"]
         agi=income_over_time-writeoff
         income_tax=get_tax(agi,int(options.filing_status))
         costs=growing_costs + get_percent(options.repair,home_value) + get_percent(options.prop_taxes,home_value)
@@ -186,6 +193,7 @@ def do_the_math(value,income,options):
         monthly_other_costs += [(costs/12)]*12
         monthly_house_costs += [(costs+mp*12)/12]*12
         monthly_leftover += [(takehome-costs-mp*12)/12]*12
+        monthly_income_taxes += [income_tax/12]*12
 
         # apply inflation for next year
         income_over_time=apply_percent(options.salary_growth,income_over_time)
@@ -193,6 +201,7 @@ def do_the_math(value,income,options):
         growing_costs=apply_percent(options.inflation_rate,growing_costs)
         home_value = apply_percent(options.home_growth,home_value)
 
+    data["income taxes"]=monthly_income_taxes
     data["monthly takehome"]=monthly_takehome
     data["monthly savings"]=monthly_savings
     data["monthly other costs"]=monthly_other_costs
@@ -207,7 +216,8 @@ def do_the_math(value,income,options):
 if __name__=="__main__":
     parser=build_optparser()
     (options,args)=parser.parse_args()
-    vals,data=do_the_math(float(args[0]),float(args[1]),options) 
+    mkv=lambda s: float(s.replace(",","").replace("k","000"))
+    vals,data=do_the_math(mkv(args[0]),mkv(args[1]),options) 
     print "\n","*"*50
     for k,v in vals.items():
         if type(v)==float:
@@ -218,4 +228,17 @@ if __name__=="__main__":
         print k
         print ",".join(["%.2f"%i for i in v[:5]]),"...",",".join(["%.2f"%i for i in v[-5:]])
  
+
+	try:
+		from matplotlib import pyplot as plot
+		import numpy
+		tot,hc,lo,taxes=data["stated income"],data["monthly house costs"],data["monthly leftover"],data["income taxes"]
+		plot.plot(lo,label="left over")
+		plot.plot(hc,label="housing costs")
+		plot.plot(tot,label="income")
+		plot.plot(taxes,label="income taxes")
+		plot.show()
+	except ImportError:
+		print "no matplotlib and numpy, not graphs"	
+
 
